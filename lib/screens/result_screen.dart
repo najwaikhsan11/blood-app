@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../services/api_service.dart';
 
 class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
@@ -10,6 +11,118 @@ class ResultScreen extends StatefulWidget {
 
 class _ResultScreenState extends State<ResultScreen> {
   int _selectedIndex = 1; // "Hasil" tab is active
+  bool _isLoading = true;
+  String _nama = '';
+  String _idUser = '';
+  String _gender = '';
+  String _age = '';
+  String _goldar = '-';
+  String _rhesus = '-';
+  String _tanggalWaktu = '-';
+  String _idAlat = '-';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  String get _displayGoldar {
+    if (_goldar == '-' || _goldar.isEmpty) return '-';
+    String suffix = '';
+    if (_rhesus.toLowerCase().contains('positif') || _rhesus == '+') {
+      suffix = '+';
+    } else if (_rhesus.toLowerCase().contains('negatif') || _rhesus == '-') {
+      suffix = '-';
+    }
+    if (_goldar.endsWith('+') || _goldar.endsWith('-')) {
+      return _goldar;
+    }
+    return '$_goldar$suffix';
+  }
+
+  void _loadData() async {
+    final stored = await ApiService.getStoredProfile();
+    setState(() {
+      _nama = stored['nama_pendonor'] ?? '';
+      _idUser = stored['id_user'] ?? '';
+    });
+
+    final res = await ApiService.getDonorDetail();
+    if (res['success'] == true) {
+      final data = res['data'];
+      
+      String tempGoldar = '-';
+      String tempRhesus = '-';
+      String tempIdAlat = '-';
+      String tempTanggalWaktu = '-';
+
+      final hasil = data['hasil'];
+      if (hasil != null && hasil['golongan_darah'] != null && hasil['golongan_darah'] != '-') {
+        tempGoldar = hasil['golongan_darah'];
+        tempRhesus = hasil['rhesus'] ?? '-';
+        tempIdAlat = hasil['id_alat'] ?? '-';
+        
+        final tglPem = hasil['tanggal_pemeriksaan'];
+        if (tglPem != null) {
+          try {
+            final parsed = DateTime.parse(tglPem);
+            tempTanggalWaktu = "${parsed.day} ${_monthName(parsed.month)} ${parsed.year}";
+          } catch (_) {
+            tempTanggalWaktu = tglPem;
+          }
+        }
+        if (hasil['nama_alat'] != null) {
+          tempIdAlat = hasil['nama_alat'];
+        }
+      }
+
+      String deviceName = tempIdAlat;
+      if (tempIdAlat != '-' && tempIdAlat.length == 24) {
+        final alatRes = await ApiService.getAlat();
+        if (alatRes['success'] == true && alatRes['data'] != null) {
+          final List<dynamic> alats = alatRes['data'];
+          for (var a in alats) {
+            if (a['_id'] == tempIdAlat && a['nama_alat'] != null) {
+              deviceName = a['nama_alat'];
+              break;
+            }
+          }
+        }
+      }
+
+      setState(() {
+        _nama = data['nama_pendonor'] ?? _nama;
+        _idUser = data['id_user'] ?? _idUser;
+        _gender = data['jenis_kelamin'] ?? '';
+        final tglLahir = data['tanggal_lahir'];
+        if (tglLahir != null) {
+          try {
+            final dob = DateTime.parse(tglLahir);
+            final age = DateTime.now().year - dob.year;
+            _age = "$age Tahun";
+          } catch (_) {
+            _age = '';
+          }
+        }
+
+        _goldar = tempGoldar;
+        _rhesus = tempRhesus;
+        _tanggalWaktu = tempTanggalWaktu;
+        _idAlat = deviceName;
+        _isLoading = false;
+      });
+    } else {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  String _monthName(int month) {
+    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    return months[month - 1];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,208 +161,210 @@ class _ResultScreenState extends State<ResultScreen> {
 
             // ── Scrollable Content ────────────────────────────────────
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const SizedBox(height: 8),
-
-                    // ── Patient Info Card ─────────────────────────────
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryRed,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.primaryRed))
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Avatar
+                          const SizedBox(height: 8),
+
+                          // ── Patient Info Card ─────────────────────────────
                           Container(
-                            width: 52,
-                            height: 52,
+                            padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.25),
-                              borderRadius: BorderRadius.circular(12),
+                              color: AppColors.primaryRed,
+                              borderRadius: BorderRadius.circular(16),
                             ),
-                            child: const Icon(
-                              Icons.person,
-                              color: Colors.white,
-                              size: 30,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          // Patient details
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text(
-                                'Najwa Ikhsaniyah',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15,
-                                ),
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                'ID: 00011',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              SizedBox(height: 2),
-                              Text(
-                                '22 Tahun, Perempuan',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // ── Blood Type Result Card ────────────────────────
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 28, horizontal: 20),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.07),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          const Text(
-                            'Golongan Darah',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              const Text(
-                                'AB+',
-                                style: TextStyle(
-                                  fontSize: 72,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.primaryRed,
-                                  height: 1.0,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Icon(
-                                Icons.water_drop,
-                                size: 64,
-                                color: AppColors.primaryRed.withOpacity(0.9),
-                                shadows: [
-                                  Shadow(
-                                    color: Colors.black.withOpacity(0.15),
-                                    blurRadius: 4,
-                                    offset: const Offset(2, 2),
+                            child: Row(
+                              children: [
+                                // Avatar
+                                Container(
+                                  width: 52,
+                                  height: 52,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.25),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
-                                ],
-                              ),
-                            ],
+                                  child: const Icon(
+                                    Icons.person,
+                                    color: Colors.white,
+                                    size: 30,
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                // Patient details
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _nama,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'ID: $_idUser',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${_age.isNotEmpty ? "$_age, " : ""}$_gender',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
+
                           const SizedBox(height: 20),
-                          const Text(
-                            'Rhesus',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
+
+                          // ── Blood Type Result Card ────────────────────────
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 28, horizontal: 20),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.07),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                const Text(
+                                  'Golongan Darah',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      _displayGoldar,
+                                      style: const TextStyle(
+                                        fontSize: 72,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.primaryRed,
+                                        height: 1.0,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Icon(
+                                      Icons.water_drop,
+                                      size: 64,
+                                      color: AppColors.primaryRed.withOpacity(0.9),
+                                      shadows: [
+                                        Shadow(
+                                          color: Colors.black.withOpacity(0.15),
+                                          blurRadius: 4,
+                                          offset: const Offset(2, 2),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 20),
+                                const Text(
+                                  'Rhesus',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _rhesus,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.black54,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Positif ( + )',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.black54,
+
+                          const SizedBox(height: 20),
+
+                          // ── Detail Info Card ──────────────────────────────
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.07),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                _buildDetailRow(
+                                  icon: Icons.calendar_today_outlined,
+                                  label: 'Tanggal & Waktu',
+                                  value: _tanggalWaktu,
+                                  showDivider: true,
+                                ),
+                                _buildDetailRow(
+                                  icon: Icons.devices_outlined,
+                                  label: 'Nama Alat',
+                                  value: _idAlat,
+                                  showDivider: false,
+                                ),
+                              ],
                             ),
                           ),
+
+                          const SizedBox(height: 32),
+
+                          // ── Save Button ───────────────────────────────────
+                          ElevatedButton(
+                            onPressed: _onSimpanSelesai,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primaryRed,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              elevation: 2,
+                            ),
+                            child: const Text(
+                              'Simpan & Selesai',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 24),
                         ],
                       ),
                     ),
-
-                    const SizedBox(height: 20),
-
-                    // ── Detail Info Card ──────────────────────────────
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.07),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          _buildDetailRow(
-                            icon: Icons.calendar_today_outlined,
-                            label: 'Tanggal & Waktu',
-                            value: '7 Mei 2026, 10:30 WIB',
-                            showDivider: true,
-                          ),
-                          _buildDetailRow(
-                            icon: Icons.devices_outlined,
-                            label: 'ID Alat',
-                            value: 'BLOOD-DEVICE-01',
-                            showDivider: false,
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 32),
-
-                    // ── Save Button ───────────────────────────────────
-                    ElevatedButton(
-                      onPressed: _onSimpanSelesai,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryRed,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        elevation: 2,
-                      ),
-                      child: const Text(
-                        'Simpan & Selesai',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
             ),
 
             // ── Bottom Navigation Bar ─────────────────────────────────

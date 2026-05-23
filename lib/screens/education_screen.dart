@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../services/api_service.dart';
 
 class EducationScreen extends StatefulWidget {
   const EducationScreen({super.key});
@@ -10,6 +11,8 @@ class EducationScreen extends StatefulWidget {
 
 class _EducationScreenState extends State<EducationScreen> {
   int _selectedIndex = 3; // "Edukasi" tab is active
+  bool _isLoading = false;
+  List<Map<String, dynamic>> _apiTopics = [];
 
   final List<Map<String, dynamic>> _topics = [
     {
@@ -49,6 +52,45 @@ class _EducationScreenState extends State<EducationScreen> {
       'content': '1. Tidur cukup minimal 7-8 jam sebelum mendonorkan darah.\n2. Makan makanan bergizi, terutama yang kaya zat besi seperti daging merah atau bayam.\n3. Minum banyak air putih, minimal 3-4 gelas ekstra.\n4. Hindari konsumsi alkohol minimal 24 jam sebelum donor.\n5. Hindari makanan berlemak tinggi karena dapat mempengaruhi kualitas plasma darah.'
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  void _loadData() async {
+    setState(() {
+      _isLoading = true;
+    });
+    final res = await ApiService.getEdukasi();
+    if (res['success'] == true && res['data'] != null && res['data'] is List) {
+      final List<dynamic> list = res['data'];
+      setState(() {
+        _apiTopics = list.map<Map<String, dynamic>>((item) {
+          return {
+            'title': item['judul'] ?? '',
+            'subtitle': item['sumber'] != null && item['sumber'].toString().isNotEmpty
+                ? 'Sumber: ${item['sumber']}'
+                : 'Edukasi Darah',
+            'content': item['isi_materi'] ?? '',
+            'icon': Icons.article_outlined,
+            'gambar': item['gambar'] ?? '',
+          };
+        }).toList();
+      });
+    }
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  List<Map<String, dynamic>> get _displayTopics {
+    if (_apiTopics.isNotEmpty) {
+      return _apiTopics;
+    }
+    return _topics;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -101,7 +143,7 @@ class _EducationScreenState extends State<EducationScreen> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.chat_bubble_outline, color: AppColors.primaryRed, size: 24),
+                          const Icon(Icons.chat_bubble_outline, color: AppColors.primaryRed, size: 24),
                           const SizedBox(width: 12),
                           const Expanded(
                             child: Text(
@@ -120,26 +162,32 @@ class _EducationScreenState extends State<EducationScreen> {
                     const SizedBox(height: 24),
 
                     // ── Topics List ───────────────────────────────────
-                    ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _topics.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final topic = _topics[index];
-                        return _buildTopicCard(
-                          icon: topic['icon'],
-                          title: topic['title'],
-                          subtitle: topic['subtitle'],
-                          onTap: () {
-                            Navigator.of(context).pushNamed(
-                              '/education_detail',
-                              arguments: topic,
-                            );
-                          },
-                        );
-                      },
-                    ),
+                    _isLoading
+                        ? const Center(child: Padding(
+                            padding: EdgeInsets.all(32.0),
+                            child: CircularProgressIndicator(color: AppColors.primaryRed),
+                          ))
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _displayTopics.length,
+                            separatorBuilder: (context, index) => const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final topic = _displayTopics[index];
+                              return _buildTopicCard(
+                                icon: topic['icon'],
+                                gambar: topic['gambar'],
+                                title: topic['title'],
+                                subtitle: topic['subtitle'],
+                                onTap: () {
+                                  Navigator.of(context).pushNamed(
+                                    '/education_detail',
+                                    arguments: topic,
+                                  );
+                                },
+                              );
+                            },
+                          ),
 
                     const SizedBox(height: 24),
                   ],
@@ -183,6 +231,7 @@ class _EducationScreenState extends State<EducationScreen> {
 
   Widget _buildTopicCard({
     required IconData icon,
+    String? gambar,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
@@ -205,11 +254,32 @@ class _EducationScreenState extends State<EducationScreen> {
         ),
         child: Row(
           children: [
-            // Icon
-            Icon(
-              icon,
-              size: 40,
-              color: AppColors.primaryRed,
+            // Image or Icon
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: AppColors.primaryRed.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: (gambar != null && gambar.isNotEmpty)
+                  ? Image.network(
+                      ApiService.getImageUrl(gambar),
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Icon(
+                          icon,
+                          size: 28,
+                          color: AppColors.primaryRed,
+                        );
+                      },
+                    )
+                  : Icon(
+                      icon,
+                      size: 28,
+                      color: AppColors.primaryRed,
+                    ),
             ),
             const SizedBox(width: 16),
             // Texts

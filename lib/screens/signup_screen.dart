@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../services/api_service.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -18,6 +19,81 @@ class _SignupScreenState extends State<SignupScreen> {
   String _jenisKelamin = 'Perempuan'; // 'Laki-laki' or 'Perempuan'
   bool _agreeToTerms = false;
   String? _selectedDate;
+  bool _isLoading = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
+
+  void _handleRegister() async {
+    final nama = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final phone = _phoneController.text.trim();
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+
+    if (nama.isEmpty || email.isEmpty || phone.isEmpty || password.isEmpty || confirmPassword.isEmpty || _selectedDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Semua field wajib diisi')),
+      );
+      return;
+    }
+
+    if (password.length < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kata sandi minimal 8 karakter')),
+      );
+      return;
+    }
+
+    if (password != confirmPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Konfirmasi kata sandi tidak cocok')),
+      );
+      return;
+    }
+
+    if (!_agreeToTerms) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Anda harus menyetujui Syarat dan Ketentuan')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    final result = await ApiService.register(
+      nama: nama,
+      email: email,
+      phone: phone,
+      dob: _selectedDate!,
+      gender: _jenisKelamin,
+      password: password,
+    );
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    if (result['success'] == true) {
+      if (mounted) {
+        Navigator.pushReplacementNamed(
+          context, 
+          '/signup_success',
+          arguments: result['id_user'],
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message']),
+            backgroundColor: AppColors.primaryRed,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -101,14 +177,26 @@ class _SignupScreenState extends State<SignupScreen> {
               _buildLabel('Jenis Kelamin'),
               Row(
                 children: [
-                  Expanded(child: _buildGenderButton('Laki - laki', Icons.male)),
+                  Expanded(child: _buildGenderButton('Laki - Laki', Icons.male)),
                   const SizedBox(width: 16),
                   Expanded(child: _buildGenderButton('Perempuan', Icons.female)),
                 ],
               ),
               
               _buildLabel('Kata Sandi'),
-              _buildTextField(_passwordController, 'Buat kata sandi', Icons.lock_outline, obscureText: true, isPassword: true),
+              _buildTextField(
+                _passwordController, 
+                'Buat kata sandi', 
+                Icons.lock_outline, 
+                obscureText: _obscurePassword, 
+                isPassword: true,
+                isObscured: _obscurePassword,
+                onToggleVisibility: () {
+                  setState(() {
+                    _obscurePassword = !_obscurePassword;
+                  });
+                },
+              ),
               const Padding(
                 padding: EdgeInsets.only(top: 8.0, left: 4),
                 child: Text(
@@ -118,7 +206,19 @@ class _SignupScreenState extends State<SignupScreen> {
               ),
               
               _buildLabel('Konfirmasi Kata Sandi'),
-              _buildTextField(_confirmPasswordController, 'Ulangi kata sandi', Icons.lock_outline, obscureText: true, isPassword: true),
+              _buildTextField(
+                _confirmPasswordController, 
+                'Ulangi kata sandi', 
+                Icons.lock_outline, 
+                obscureText: _obscureConfirmPassword, 
+                isPassword: true,
+                isObscured: _obscureConfirmPassword,
+                onToggleVisibility: () {
+                  setState(() {
+                    _obscureConfirmPassword = !_obscureConfirmPassword;
+                  });
+                },
+              ),
               
               const SizedBox(height: 24),
               
@@ -157,9 +257,7 @@ class _SignupScreenState extends State<SignupScreen> {
               
               // Register Button
               ElevatedButton(
-                onPressed: () {
-                  Navigator.pushReplacementNamed(context, '/signup_success');
-                },
+                onPressed: _isLoading ? null : _handleRegister,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryRed,
                   foregroundColor: Colors.white,
@@ -167,10 +265,19 @@ class _SignupScreenState extends State<SignupScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   elevation: 0,
                 ),
-                child: const Text(
-                  'Daftar',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text(
+                        'Daftar',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
               ),
               
               // Login Link
@@ -211,7 +318,16 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String hint, IconData icon, {bool obscureText = false, bool isPassword = false, TextInputType? keyboardType}) {
+  Widget _buildTextField(
+    TextEditingController controller, 
+    String hint, 
+    IconData icon, {
+      bool obscureText = false, 
+      bool isPassword = false, 
+      TextInputType? keyboardType,
+      bool? isObscured,
+      VoidCallback? onToggleVisibility,
+    }) {
     return TextField(
       controller: controller,
       obscureText: obscureText,
@@ -220,7 +336,18 @@ class _SignupScreenState extends State<SignupScreen> {
         hintText: hint,
         hintStyle: const TextStyle(fontSize: 13, color: Colors.black38),
         prefixIcon: Icon(icon, size: 20, color: Colors.black38),
-        suffixIcon: isPassword ? const Icon(Icons.visibility_off_outlined, size: 20, color: Colors.black38) : null,
+        suffixIcon: isPassword
+            ? IconButton(
+                icon: Icon(
+                  (isObscured ?? true)
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                  size: 20,
+                  color: Colors.black38,
+                ),
+                onPressed: onToggleVisibility,
+              )
+            : null,
         filled: true,
         fillColor: Colors.white,
         contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
@@ -238,9 +365,18 @@ class _SignupScreenState extends State<SignupScreen> {
 
   Widget _buildDatePicker() {
     return GestureDetector(
-      onTap: () {
-        // Show date picker logic here
-        setState(() => _selectedDate = "1 Januari 1990");
+      onTap: () async {
+        final DateTime? picked = await showDatePicker(
+          context: context,
+          initialDate: DateTime(2000),
+          firstDate: DateTime(1900),
+          lastDate: DateTime.now(),
+        );
+        if (picked != null) {
+          setState(() {
+            _selectedDate = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+          });
+        }
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

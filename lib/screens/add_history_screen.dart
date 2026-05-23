@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../services/api_service.dart';
 
 class AddHistoryScreen extends StatefulWidget {
   const AddHistoryScreen({super.key});
@@ -11,9 +13,39 @@ class AddHistoryScreen extends StatefulWidget {
 class _AddHistoryScreenState extends State<AddHistoryScreen> {
   String _jenisDonor = 'Donor Darah Lengkap';
   final TextEditingController _catatanController = TextEditingController();
-  final TextEditingController _tanggalController = TextEditingController(text: '7 Mei 2026');
-  final TextEditingController _lokasiController = TextEditingController(text: 'PMI Kota Bandung');
-  final TextEditingController _banyakDarahController = TextEditingController(text: '500 ml');
+  final TextEditingController _tanggalController = TextEditingController();
+  final TextEditingController _lokasiController = TextEditingController();
+  final TextEditingController _banyakDarahController = TextEditingController(text: '350 ml');
+
+  bool _isInit = true;
+  Map<String, dynamic>? _editItem;
+  bool _isLoading = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_isInit) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args != null && args is Map<String, dynamic>) {
+        _editItem = args;
+        _tanggalController.text = args['tanggal_donor'] ?? '';
+        
+        final ketStr = args['keterangan'];
+        if (ketStr != null) {
+          try {
+            final Map<String, dynamic> ket = jsonDecode(ketStr);
+            _lokasiController.text = ket['lokasi'] ?? '';
+            _banyakDarahController.text = ket['banyak_darah'] ?? '350 ml';
+            _jenisDonor = ket['jenis_donor'] ?? 'Donor Darah Lengkap';
+            _catatanController.text = ket['catatan'] ?? '';
+          } catch (_) {
+            _lokasiController.text = ketStr;
+          }
+        }
+      }
+      _isInit = false;
+    }
+  }
 
   @override
   void dispose() {
@@ -24,8 +56,69 @@ class _AddHistoryScreenState extends State<AddHistoryScreen> {
     super.dispose();
   }
 
+  void _handleSave() async {
+    final tanggal = _tanggalController.text.trim();
+    final lokasi = _lokasiController.text.trim();
+    final banyakDarah = _banyakDarahController.text.trim();
+    final catatan = _catatanController.text.trim();
+
+    if (tanggal.isEmpty || lokasi.isEmpty || banyakDarah.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Field bertanda * wajib diisi')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    Map<String, dynamic> result;
+    if (_editItem != null) {
+      result = await ApiService.updateRiwayat(
+        _editItem!['_id'],
+        tanggal: tanggal,
+        lokasi: lokasi,
+        banyakDarah: banyakDarah,
+        jenisDonor: _jenisDonor,
+        catatan: catatan,
+      );
+    } else {
+      result = await ApiService.addRiwayat(
+        tanggal: tanggal,
+        lokasi: lokasi,
+        banyakDarah: banyakDarah,
+        jenisDonor: _jenisDonor,
+        catatan: catatan,
+      );
+    }
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    if (result['success'] == true) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Riwayat berhasil disimpan')),
+        );
+        Navigator.of(context).pop(true);
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Gagal menyimpan riwayat'),
+            backgroundColor: AppColors.primaryRed,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isEditing = _editItem != null;
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -36,9 +129,9 @@ class _AddHistoryScreenState extends State<AddHistoryScreen> {
           icon: const Icon(Icons.arrow_back, color: Colors.black87),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Tambah Riwayat Donor',
-          style: TextStyle(
+        title: Text(
+          isEditing ? 'Ubah Riwayat Donor' : 'Tambah Riwayat Donor',
+          style: const TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
             color: Colors.black87,
@@ -87,8 +180,18 @@ class _AddHistoryScreenState extends State<AddHistoryScreen> {
                       readOnly: true,
                       suffixIcon: Icons.keyboard_arrow_down,
                       prefixIcon: Icons.calendar_today_outlined,
-                      onTap: () {
-                        // Show Date Picker
+                      onTap: () async {
+                        final DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime.now(),
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            _tanggalController.text = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+                          });
+                        }
                       },
                     ),
 
@@ -105,7 +208,24 @@ class _AddHistoryScreenState extends State<AddHistoryScreen> {
                       readOnly: true,
                       suffixIcon: Icons.keyboard_arrow_down,
                       onTap: () {
-                        // Show Dropdown
+                        showModalBottomSheet(
+                          context: context,
+                          builder: (context) {
+                            final options = ['250 ml', '350 ml', '450 ml', '500 ml'];
+                            return ListView(
+                              shrinkWrap: true,
+                              children: options.map((opt) => ListTile(
+                                title: Text(opt),
+                                onTap: () {
+                                  setState(() {
+                                    _banyakDarahController.text = opt;
+                                  });
+                                  Navigator.pop(context);
+                                },
+                              )).toList(),
+                            );
+                          }
+                        );
                       },
                     ),
 
@@ -176,7 +296,7 @@ class _AddHistoryScreenState extends State<AddHistoryScreen> {
                                 ),
                                 SizedBox(height: 4),
                                 Text(
-                                  'Minimal Jarak antar donor darah adalah 3 bulan untuk pria dan 4 bulan untuk wanita',
+                                  'Minimal Jarak antar donor darah adalah 3/4 bulan tergantung jenis kelamin pendonor.',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: Colors.black87,
@@ -198,10 +318,7 @@ class _AddHistoryScreenState extends State<AddHistoryScreen> {
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: ElevatedButton(
-                onPressed: () {
-                  // Save logic
-                  Navigator.of(context).pop();
-                },
+                onPressed: _isLoading ? null : _handleSave,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryRed,
                   foregroundColor: Colors.white,
@@ -212,13 +329,22 @@ class _AddHistoryScreenState extends State<AddHistoryScreen> {
                   minimumSize: const Size(double.infinity, 50),
                   elevation: 0,
                 ),
-                child: const Text(
-                  'Simpan',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text(
+                        'Simpan',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ),
           ],

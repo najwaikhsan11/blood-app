@@ -10,6 +10,7 @@ class SignupSuccessScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String userId = (ModalRoute.of(context)?.settings.arguments as String?) ?? _userId;
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -74,7 +75,7 @@ class SignupSuccessScreen extends StatelessWidget {
                     _buildIdRow(
                       context: context,
                       label: 'ID User',
-                      value: _userId,
+                      value: userId,
                       icon: Icons.person_pin_outlined,
                     ),
                   ],

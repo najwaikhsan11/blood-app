@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../services/api_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -10,6 +11,87 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
+  bool _isLoading = true;
+  String _userName = '';
+  String _userId = '';
+  String _bloodType = '-';
+  String _rhesus = '-';
+  String _nextDonationMsg = 'Belum ada riwayat donor';
+
+  String get _bloodTypeDisplay {
+    if (_bloodType == '-') return '-';
+    final sign = _rhesus.toLowerCase() == 'positif' || _rhesus == '+'
+        ? '+'
+        : (_rhesus.toLowerCase() == 'negatif' || _rhesus == '-' ? '-' : '');
+    if (_bloodType.endsWith('+') || _bloodType.endsWith('-')) {
+      return _bloodType;
+    }
+    return '$_bloodType$sign';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final stored = await ApiService.getStoredProfile();
+    setState(() {
+      _userName = stored['nama_pendonor'] ?? '';
+      _userId = stored['id_user'] ?? '';
+    });
+
+    final res = await ApiService.getDonorDetail();
+    if (res['success'] == true) {
+      final data = res['data'];
+      setState(() {
+        _userName = data['nama_pendonor'] ?? _userName;
+        _userId = data['id_user'] ?? _userId;
+        final hasil = data['hasil'];
+        if (hasil != null) {
+          _bloodType = hasil['golongan_darah'] ?? '-';
+          _rhesus = hasil['rhesus'] ?? '-';
+        }
+        
+        final riwayat = data['riwayat'] as List?;
+        if (riwayat != null && riwayat.isNotEmpty) {
+          DateTime? latestDate;
+          for (var item in riwayat) {
+            final tgl = item['tanggal_donor'];
+            if (tgl != null) {
+              try {
+                final parsed = DateTime.parse(tgl);
+                if (latestDate == null || parsed.isAfter(latestDate)) {
+                  latestDate = parsed;
+                }
+              } catch (_) {
+                // Ignore parsing errors for custom string formats
+              }
+            }
+          }
+          
+          if (latestDate != null) {
+            final isFemale = (data['jenis_kelamin'] ?? '').toLowerCase() == 'perempuan';
+            final diffDays = isFemale ? 120 : 90;
+            final nextDate = latestDate.add(Duration(days: diffDays));
+            final now = DateTime.now();
+            if (nextDate.isAfter(now)) {
+              final remainingDays = nextDate.difference(now).inDays;
+              _nextDonationMsg = "Dapat dilakukan pada ${nextDate.year}-${nextDate.month.toString().padLeft(2, '0')}-${nextDate.day.toString().padLeft(2, '0')} ($remainingDays Hari Lagi)";
+            } else {
+              _nextDonationMsg = "Anda sudah memenuhi syarat waktu untuk donor berikutnya!";
+            }
+          }
+        }
+        _isLoading = false;
+      });
+    } else {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,104 +138,110 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
 
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Greeting
-                      const Text(
-                        'Halo, Najwa 👋',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const Text(
-                        'ID: USR-2026-00421',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
+                child: _isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(
                           color: AppColors.primaryRed,
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Jaga kesehatanmu, setetes darah\nsangat berarti bagi sesama.',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.black54,
-                          height: 1.4,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Blood Type Card
-                      Container(
-                        padding: const EdgeInsets.all(24.0),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
+                      )
+                    : SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(horizontal: 24.0),
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            const Text(
-                              'Golongan Darah Saya',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.black87,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Text(
-                                  'AB+',
-                                  style: TextStyle(
-                                    fontSize: 64,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.primaryRed,
-                                    height: 1.0,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Icon(
-                                  Icons.water_drop,
-                                  size: 70,
-                                  color: AppColors.primaryRed.withOpacity(0.9),
-                                  shadows: [
-                                    Shadow(
-                                      color: Colors.black.withOpacity(0.2),
-                                      blurRadius: 4,
-                                      offset: const Offset(2, 2),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Rhesus Positif ( + )',
-                              style: TextStyle(
-                                fontSize: 14,
+                            // Greeting
+                            Text(
+                              'Halo, $_userName 👋',
+                              style: const TextStyle(
+                                fontSize: 22,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.black87,
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 24),
+                            Text(
+                              'ID: $_userId',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.primaryRed,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Jaga kesehatanmu, setetes darah\nsangat berarti bagi sesama.',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.black54,
+                                height: 1.4,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+
+                            // Blood Type Card
+                            Container(
+                              padding: const EdgeInsets.all(24.0),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.05),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                children: [
+                                  const Text(
+                                    'Golongan Darah Saya',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        _bloodTypeDisplay,
+                                        style: const TextStyle(
+                                          fontSize: 64,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.primaryRed,
+                                          height: 1.0,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Icon(
+                                        Icons.water_drop,
+                                        size: 70,
+                                        color: AppColors.primaryRed.withOpacity(0.9),
+                                        shadows: [
+                                          Shadow(
+                                            color: Colors.black.withOpacity(0.2),
+                                            blurRadius: 4,
+                                            offset: const Offset(2, 2),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'Rhesus $_rhesus',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 24),
 
                       // Action Grid
                       Row(
@@ -223,8 +311,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: const [
-                                    Text(
+                                  children: [
+                                    const Text(
                                       'Peringatan Donor',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
@@ -232,10 +320,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                         fontSize: 14,
                                       ),
                                     ),
-                                    SizedBox(height: 4),
+                                    const SizedBox(height: 4),
                                     Text(
-                                      'Donor berikutnya dapat dilakukan\npada 7 September 2026',
-                                      style: TextStyle(
+                                      _nextDonationMsg,
+                                      style: const TextStyle(
                                         color: Colors.black54,
                                         fontSize: 12,
                                       ),

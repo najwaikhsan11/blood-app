@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../services/api_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -10,9 +11,57 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   int _selectedIndex = 4; // "Profile" tab is active
+  bool _isLoading = true;
+  Map<String, dynamic>? _donorData;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  void _loadData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final stored = await ApiService.getStoredProfile();
+    if (stored.isNotEmpty && (stored['nama_pendonor']?.isNotEmpty ?? false)) {
+      setState(() {
+        _donorData = stored;
+      });
+    }
+
+    final res = await ApiService.getDonorDetail();
+    if (res['success'] == true) {
+      setState(() {
+        _donorData = res['data'];
+        _isLoading = false;
+      });
+    } else {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final String nama = _donorData?['nama_pendonor'] ?? 'Memuat...';
+    final String email = _donorData?['email'] ?? '';
+    
+    var goldar = _donorData?['golongan_darah'] ?? '-';
+    var rhesusVal = _donorData?['rhesus'] ?? '';
+    if ((goldar == '-' || goldar == '') && _donorData?['hasil'] != null) {
+      goldar = _donorData?['hasil']['golongan_darah'] ?? '-';
+      rhesusVal = _donorData?['hasil']['rhesus'] ?? '';
+    }
+    
+    final String rhesusSign = rhesusVal.toLowerCase() == 'positif' || rhesusVal == '+'
+        ? '+'
+        : (rhesusVal.toLowerCase() == 'negatif' || rhesusVal == '-' ? '-' : '');
+    final String goldarFull = goldar == '-' ? '-' : '$goldar$rhesusSign';
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -46,11 +95,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             // ── Scrollable Content ────────────────────────────────────
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 8),
+              child: _isLoading && _donorData == null
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.primaryRed))
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 8),
 
                     // ── Header Card ───────────────────────────────────
                     Container(
@@ -81,27 +132,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
-                              children: const [
+                              children: [
                                 Text(
-                                  'Najwa Ikhsaniyah',
-                                  style: TextStyle(
+                                  nama,
+                                  style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                SizedBox(height: 4),
+                                const SizedBox(height: 4),
                                 Text(
-                                  'najwaikh@gmail.com',
-                                  style: TextStyle(
+                                  email,
+                                  style: const TextStyle(
                                     color: Colors.white70,
                                     fontSize: 12,
                                   ),
                                 ),
-                                SizedBox(height: 2),
+                                const SizedBox(height: 4),
                                 Text(
-                                  'ID: USR-2026-00421',
-                                  style: TextStyle(
+                                  'Golongan Darah: $goldarFull',
+                                  style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w500,
@@ -134,7 +185,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           _buildListTile(
                             icon: Icons.person_outline,
                             title: 'Data Pribadi',
-                            onTap: () => Navigator.of(context).pushNamed('/edit_profile'),
+                            onTap: () async {
+                              final res = await Navigator.of(context).pushNamed('/edit_profile', arguments: _donorData);
+                              if (res == true) {
+                                _loadData();
+                              }
+                            },
                           ),
                           _buildDivider(),
                           _buildListTile(
@@ -176,9 +232,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                     // ── Logout Button ─────────────────────────────────
                     OutlinedButton.icon(
-                      onPressed: () {
-                        // Handle logout (e.g., clear session and push to login)
-                        Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+                      onPressed: () async {
+                        await ApiService.logout();
+                        if (mounted) {
+                          Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+                        }
                       },
                       icon: const Icon(Icons.logout, size: 20),
                       label: const Text(

@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../services/api_service.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -10,6 +12,82 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   int _selectedIndex = 2; // "Riwayat" tab is active
+  bool _isLoading = true;
+  List<dynamic> _historyList = [];
+  String _totalDonor = '0x';
+  String _lastDonorDate = '-';
+  String _nextDonationDays = '-';
+  String _nextDonationDate = '-';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final res = await ApiService.getDonorDetail();
+    if (res['success'] == true) {
+      final data = res['data'];
+      final riwayat = data['riwayat'] as List? ?? [];
+      
+      final sortedRiwayat = List.from(riwayat);
+      sortedRiwayat.sort((a, b) {
+        final t1 = a['tanggal_donor'] ?? '';
+        final t2 = b['tanggal_donor'] ?? '';
+        return t2.compareTo(t1);
+      });
+
+      setState(() {
+        _historyList = sortedRiwayat;
+        _totalDonor = '${_historyList.length}x';
+        
+        if (_historyList.isNotEmpty) {
+          final latestTgl = _historyList.first['tanggal_donor'];
+          if (latestTgl != null) {
+            try {
+              final parsed = DateTime.parse(latestTgl);
+              _lastDonorDate = "${parsed.day} ${_monthName(parsed.month)} ${parsed.year}";
+              
+              final isFemale = (data['jenis_kelamin'] ?? '').toLowerCase() == 'perempuan';
+              final diffDays = isFemale ? 120 : 90;
+              final nextDate = parsed.add(Duration(days: diffDays));
+              final now = DateTime.now();
+              if (nextDate.isAfter(now)) {
+                final remainingDays = nextDate.difference(now).inDays;
+                _nextDonationDays = "$remainingDays Hari";
+                _nextDonationDate = "Estimasi: ${nextDate.day} ${_monthName(nextDate.month)} ${nextDate.year}";
+              } else {
+                _nextDonationDays = "0 Hari";
+                _nextDonationDate = "Siap Donor Sekarang";
+              }
+            } catch (_) {
+              _lastDonorDate = latestTgl;
+            }
+          }
+        } else {
+          _lastDonorDate = '-';
+          _nextDonationDays = '-';
+          _nextDonationDate = 'Belum ada riwayat';
+        }
+        
+        _isLoading = false;
+      });
+    } else {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  String _monthName(int month) {
+    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    return months[month - 1];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,139 +125,177 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
             // ── Scrollable Content ────────────────────────────────────
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const SizedBox(height: 8),
-
-                    // ── Info Banner ───────────────────────────────────
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryRed.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.primaryRed))
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Icon(Icons.bloodtype, color: AppColors.primaryRed, size: 24),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Text(
-                              'Data riwayat donor di bawah ini diinput secara mandiri oleh Anda',
+                          const SizedBox(height: 8),
+
+                          // ── Info Banner ───────────────────────────────────
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryRed.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.bloodtype, color: AppColors.primaryRed, size: 24),
+                                const SizedBox(width: 12),
+                                const Expanded(
+                                  child: Text(
+                                    'Data riwayat donor di bawah ini diinput secara mandiri oleh Anda',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // ── Tambah Riwayat Button ─────────────────────────
+                          ElevatedButton(
+                            onPressed: () async {
+                              final result = await Navigator.of(context).pushNamed('/add_history');
+                              if (result == true) {
+                                _loadData();
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primaryRed,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 0,
+                            ),
+                            child: const Text(
+                              '+ Tambah Riwayat Donor',
                               style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.black87,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
+
+                          const SizedBox(height: 24),
+
+                          // ── Ringkasan Card ────────────────────────────────
+                          const Text(
+                            'Ringkasan',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryRed.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                _buildSummaryItem(
+                                  icon: Icons.bloodtype,
+                                  value: _totalDonor,
+                                  label: 'Total Donor',
+                                ),
+                                Container(width: 1, height: 40, color: AppColors.primaryRed.withOpacity(0.2)),
+                                _buildSummaryItem(
+                                  icon: Icons.calendar_today_outlined,
+                                  value: _lastDonorDate,
+                                  label: 'Donor Terakhir',
+                                ),
+                                Container(width: 1, height: 40, color: AppColors.primaryRed.withOpacity(0.2)),
+                                _buildSummaryItem(
+                                  icon: Icons.access_time,
+                                  value: _nextDonationDays,
+                                  label: 'Menuju Donor\nBerikutnya',
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          // ── Daftar Riwayat Donor ──────────────────────────
+                          const Text(
+                            'Daftar Riwayat Donor',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          
+                          if (_historyList.isEmpty)
+                            const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 40.0),
+                                child: Text(
+                                  'Belum ada riwayat donor.',
+                                  style: TextStyle(color: Colors.black54),
+                                ),
+                              ),
+                            )
+                          else
+                            ..._historyList.map((item) {
+                              final dateStr = item['tanggal_donor'] ?? '';
+                              String dateFormatted = dateStr;
+                              try {
+                                final parsed = DateTime.parse(dateStr);
+                                dateFormatted = "${parsed.day} ${_monthName(parsed.month)} ${parsed.year}";
+                              } catch (_) {}
+
+                              String lokasi = '-';
+                              String banyakDarah = '-';
+                              final ketStr = item['keterangan'];
+                              if (ketStr != null) {
+                                try {
+                                  final Map<String, dynamic> ket = jsonDecode(ketStr);
+                                  lokasi = ket['lokasi'] ?? '-';
+                                  banyakDarah = ket['banyak_darah'] ?? '-';
+                                } catch (_) {
+                                  lokasi = ketStr;
+                                }
+                              }
+
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 12.0),
+                                child: _buildHistoryCard(
+                                  date: dateFormatted,
+                                  location: lokasi,
+                                  amount: banyakDarah,
+                                  onTap: () async {
+                                    final res = await Navigator.of(context).pushNamed(
+                                      '/history_detail',
+                                      arguments: item,
+                                    );
+                                    if (res == true) {
+                                      _loadData();
+                                    }
+                                  },
+                                ),
+                              );
+                            }).toList(),
+
+                          const SizedBox(height: 24),
                         ],
                       ),
                     ),
-
-                    const SizedBox(height: 20),
-
-                    // ── Tambah Riwayat Button ─────────────────────────
-                    ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(context).pushNamed('/add_history');
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryRed,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Text(
-                        '+ Tambah Riwayat Donor',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // ── Ringkasan Card ────────────────────────────────
-                    const Text(
-                      'Ringkasan',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryRed.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _buildSummaryItem(
-                            icon: Icons.bloodtype,
-                            value: '2x',
-                            label: 'Total Donor',
-                          ),
-                          Container(width: 1, height: 40, color: AppColors.primaryRed.withOpacity(0.2)),
-                          _buildSummaryItem(
-                            icon: Icons.calendar_today_outlined,
-                            value: '7 Mei 2026',
-                            label: 'Donor Terakhir',
-                          ),
-                          Container(width: 1, height: 40, color: AppColors.primaryRed.withOpacity(0.2)),
-                          _buildSummaryItem(
-                            icon: Icons.access_time,
-                            value: '120 Hari',
-                            label: 'Menuju Donor\nBerikutnya',
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // ── Daftar Riwayat Donor ──────────────────────────
-                    const Text(
-                      'Daftar Riwayat Donor',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    
-                    _buildHistoryCard(
-                      date: '7 Mei 2026',
-                      location: 'PMI Kota Bandung',
-                      amount: '500 ml',
-                      onTap: () {
-                        Navigator.of(context).pushNamed('/history_detail');
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    _buildHistoryCard(
-                      date: '5 Februari 2026',
-                      location: 'PMI Kota Bandung',
-                      amount: '450 ml',
-                      onTap: () {
-                        // Nav to detail
-                      },
-                    ),
-
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
             ),
 
             // ── Bottom Navigation Bar ─────────────────────────────────

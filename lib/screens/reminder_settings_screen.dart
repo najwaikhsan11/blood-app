@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_colors.dart';
 
 class ReminderSettingsScreen extends StatefulWidget {
@@ -19,6 +20,31 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   // Maps day index (0=Sen..6=Min) to selection state
   final List<bool> _selectedDays = [false, false, false, false, false, true, false]; 
   final List<String> _dayLabels = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  void _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isReminderOn = prefs.getBool('isReminderOn') ?? true;
+      _reminderDays = prefs.getString('reminderDays') ?? '3 Hari Sebelum';
+      _notificationTime = prefs.getString('notificationTime') ?? '08:00';
+      _pushNotificationOn = prefs.getBool('pushNotificationOn') ?? true;
+      _emailNotificationOn = prefs.getBool('emailNotificationOn') ?? true;
+      _smsNotificationOn = prefs.getBool('smsNotificationOn') ?? false;
+      
+      final savedDaysStr = prefs.getStringList('selectedDays');
+      if (savedDaysStr != null && savedDaysStr.length == 7) {
+        for (int i = 0; i < 7; i++) {
+          _selectedDays[i] = savedDaysStr[i] == 'true';
+        }
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -217,16 +243,27 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: ElevatedButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('Pengaturan berhasil disimpan!'),
-                      backgroundColor: AppColors.primaryRed,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  );
-                  Navigator.of(context).pop();
+                onPressed: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('isReminderOn', _isReminderOn);
+                  await prefs.setString('reminderDays', _reminderDays);
+                  await prefs.setString('notificationTime', _notificationTime);
+                  await prefs.setBool('pushNotificationOn', _pushNotificationOn);
+                  await prefs.setBool('emailNotificationOn', _emailNotificationOn);
+                  await prefs.setBool('smsNotificationOn', _smsNotificationOn);
+                  await prefs.setStringList('selectedDays', _selectedDays.map((d) => d.toString()).toList());
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text('Pengaturan berhasil disimpan!'),
+                        backgroundColor: AppColors.primaryRed,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    );
+                    Navigator.of(context).pop(true);
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryRed,

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import '../theme/app_colors.dart';
+import '../services/api_service.dart';
 
 class EducationDetailScreen extends StatelessWidget {
   const EducationDetailScreen({super.key});
@@ -13,6 +15,7 @@ class EducationDetailScreen extends StatelessWidget {
     final String subtitle = args?['subtitle'] ?? '';
     final String content = args?['content'] ?? 'Tidak ada konten yang tersedia.';
     final IconData icon = args?['icon'] ?? Icons.article;
+    final String? gambar = args?['gambar'];
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -44,23 +47,33 @@ class EducationDetailScreen extends StatelessWidget {
               // ── Header Icon/Image ─────────────────────────────────────
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 40),
+                height: 200,
                 decoration: BoxDecoration(
                   color: AppColors.primaryRed.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Icon(
-                  icon,
-                  size: 80,
-                  color: AppColors.primaryRed.withOpacity(0.9),
-                  shadows: [
-                    Shadow(
-                      color: Colors.black.withOpacity(0.15),
-                      blurRadius: 4,
-                      offset: const Offset(2, 2),
-                    ),
-                  ],
-                ),
+                clipBehavior: Clip.antiAlias,
+                child: (gambar != null && gambar.isNotEmpty)
+                    ? Image.network(
+                        ApiService.getImageUrl(gambar),
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Center(
+                            child: Icon(
+                              icon,
+                              size: 80,
+                              color: AppColors.primaryRed.withOpacity(0.9),
+                            ),
+                          );
+                        },
+                      )
+                    : Center(
+                        child: Icon(
+                          icon,
+                          size: 80,
+                          color: AppColors.primaryRed.withOpacity(0.9),
+                        ),
+                      ),
               ),
               const SizedBox(height: 24),
 
@@ -85,9 +98,9 @@ class EducationDetailScreen extends StatelessWidget {
               const SizedBox(height: 24),
 
               // ── Main Content ──────────────────────────────────────────
-              Text(
+              HtmlWidget(
                 content,
-                style: const TextStyle(
+                textStyle: const TextStyle(
                   fontSize: 14,
                   color: Colors.black87,
                   height: 1.6,

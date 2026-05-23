@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../services/api_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -9,11 +10,75 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
-  final TextEditingController _nameController = TextEditingController(text: 'Najwa Ikhsaniyah');
-  final TextEditingController _emailController = TextEditingController(text: 'najwaikh@gmail.com');
-  final TextEditingController _phoneController = TextEditingController(text: '081234567890');
-  final TextEditingController _dobController = TextEditingController(text: '12 Januari 2004');
-  String _bloodType = 'AB+';
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _dobController = TextEditingController();
+  String _bloodType = 'A+';
+
+  bool _isInit = true;
+  bool _isLoading = false;
+  Map<String, dynamic>? _profileData;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_isInit) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args != null && args is Map<String, dynamic>) {
+        _profileData = args;
+        _populateFields(args);
+      } else {
+        _loadData();
+      }
+      _isInit = false;
+    }
+  }
+
+  void _populateFields(Map<String, dynamic> args) {
+    _nameController.text = args['nama_pendonor'] ?? '';
+    _emailController.text = args['email'] ?? '';
+    _phoneController.text = args['no_telepon'] ?? '';
+    _dobController.text = args['tanggal_lahir'] ?? '';
+    
+    var rawGoldar = args['golongan_darah'] ?? '';
+    var rawRhesus = args['rhesus'] ?? '';
+    
+    // Fallback to nested hasil map if top level is empty or defaults
+    if ((rawGoldar == '' || rawGoldar == '-') && args['hasil'] != null) {
+      rawGoldar = args['hasil']['golongan_darah'] ?? '';
+      rawRhesus = args['hasil']['rhesus'] ?? '';
+    }
+
+    String formattedGoldar = '-';
+    if (rawGoldar != '' && rawGoldar != '-') {
+      final sign = rawRhesus.toLowerCase() == 'positif' || rawRhesus == '+'
+          ? '+'
+          : (rawRhesus.toLowerCase() == 'negatif' || rawRhesus == '-' ? '-' : '');
+      formattedGoldar = '$rawGoldar$sign';
+    }
+    
+    const validTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', '-'];
+    if (validTypes.contains(formattedGoldar)) {
+      _bloodType = formattedGoldar;
+    } else {
+      _bloodType = '-';
+    }
+  }
+
+  void _loadData() async {
+    setState(() {
+      _isLoading = true;
+    });
+    final res = await ApiService.getDonorDetail();
+    if (res['success'] == true) {
+      _profileData = res['data'];
+      _populateFields(_profileData!);
+    }
+    setState(() {
+      _isLoading = false;
+    });
+  }
 
   @override
   void dispose() {
@@ -22,6 +87,64 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _phoneController.dispose();
     _dobController.dispose();
     super.dispose();
+  }
+
+  void _handleSave() async {
+    final nama = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final phone = _phoneController.text.trim();
+    final dob = _dobController.text.trim();
+
+    if (nama.isEmpty || email.isEmpty || phone.isEmpty || dob.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Semua field wajib diisi')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    final bloodType = _bloodType == '-' ? '-' : _bloodType.substring(0, _bloodType.length - 1);
+    final rhesus = _bloodType == '-' ? '-' : (_bloodType.endsWith('+') ? 'Positif' : 'Negatif');
+
+    final res = await ApiService.updateProfile(
+      nama: nama,
+      email: email,
+      phone: phone,
+      dob: dob,
+      gender: _profileData?['jenis_kelamin'] ?? 'Perempuan',
+      bloodType: bloodType,
+      rhesus: rhesus,
+    );
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    if (res['success'] == true) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Profil berhasil diperbarui!'),
+            backgroundColor: AppColors.primaryRed,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+        Navigator.of(context).pop(true);
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(res['message'] ?? 'Gagal memperbarui profil'),
+            backgroundColor: AppColors.primaryRed,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -46,141 +169,142 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ),
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // ── Avatar Edit ───────────────────────────────────────
-                    Center(
-                      child: Stack(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: AppColors.primaryRed))
+            : Column(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          // ── Avatar Edit ───────────────────────────────────────
+                          Center(
+                            child: Stack(
+                              children: [
+                                Container(
+                                  width: 100,
+                                  height: 100,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.grey.shade100,
+                                    border: Border.all(color: AppColors.primaryRed, width: 2),
+                                  ),
+                                  child: const Icon(Icons.person, size: 60, color: Colors.black26),
+                                ),
+                                Positioned(
+                                  bottom: 0,
+                                  right: 0,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: const BoxDecoration(
+                                      color: AppColors.primaryRed,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.camera_alt, color: Colors.white, size: 18),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+
+                          // ── Form Fields ───────────────────────────────────────
+                          _buildLabel('Nama Lengkap'),
+                          _buildTextField(controller: _nameController, prefixIcon: Icons.person_outline),
+                          const SizedBox(height: 16),
+
+                          _buildLabel('Email'),
+                          _buildTextField(controller: _emailController, prefixIcon: Icons.email_outlined, keyboardType: TextInputType.emailAddress),
+                          const SizedBox(height: 16),
+
+                          _buildLabel('Nomor Telepon'),
+                          _buildTextField(controller: _phoneController, prefixIcon: Icons.phone_outlined, keyboardType: TextInputType.phone),
+                          const SizedBox(height: 16),
+
+                          _buildLabel('Tanggal Lahir'),
+                          _buildTextField(
+                            controller: _dobController,
+                            prefixIcon: Icons.calendar_today_outlined,
+                            readOnly: true,
+                            onTap: () async {
+                              final DateTime? picked = await showDatePicker(
+                                context: context,
+                                initialDate: DateTime.tryParse(_dobController.text) ?? DateTime.now(),
+                                firstDate: DateTime(1900),
+                                lastDate: DateTime.now(),
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  _dobController.text = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+                                });
+                              }
+                            },
+                          ),
+                          const SizedBox(height: 16),
+
+                          _buildLabel('Golongan Darah'),
                           Container(
-                            width: 100,
-                            height: 100,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
                             decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.grey.shade100,
-                              border: Border.all(color: AppColors.primaryRed, width: 2),
+                              color: Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.grey.shade300),
                             ),
-                            child: const Icon(Icons.person, size: 60, color: Colors.black26),
-                          ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: const BoxDecoration(
-                                color: AppColors.primaryRed,
-                                shape: BoxShape.circle,
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _bloodType,
+                                isExpanded: true,
+                                icon: const Icon(Icons.keyboard_arrow_down, color: Colors.black26),
+                                items: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', '-']
+                                    .map((String value) {
+                                  return DropdownMenuItem<String>(
+                                    value: value,
+                                    child: Text(value, style: const TextStyle(fontSize: 14, color: Colors.black45)),
+                                  );
+                                }).toList(),
+                                onChanged: null,
                               ),
-                              child: const Icon(Icons.camera_alt, color: Colors.white, size: 18),
                             ),
                           ),
+                          const SizedBox(height: 40),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 32),
-
-                    // ── Form Fields ───────────────────────────────────────
-                    _buildLabel('Nama Lengkap'),
-                    _buildTextField(controller: _nameController, prefixIcon: Icons.person_outline),
-                    const SizedBox(height: 16),
-
-                    _buildLabel('Email'),
-                    _buildTextField(controller: _emailController, prefixIcon: Icons.email_outlined, keyboardType: TextInputType.emailAddress),
-                    const SizedBox(height: 16),
-
-                    _buildLabel('Nomor Telepon'),
-                    _buildTextField(controller: _phoneController, prefixIcon: Icons.phone_outlined, keyboardType: TextInputType.phone),
-                    const SizedBox(height: 16),
-
-                    _buildLabel('Tanggal Lahir'),
-                    _buildTextField(
-                      controller: _dobController,
-                      prefixIcon: Icons.calendar_today_outlined,
-                      readOnly: true,
-                      onTap: () {
-                        // Show Date Picker
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    _buildLabel('Golongan Darah'),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade300),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _bloodType,
-                          isExpanded: true,
-                          icon: const Icon(Icons.keyboard_arrow_down, color: Colors.black54),
-                          items: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
-                              .map((String value) {
-                            return DropdownMenuItem<String>(
-                              value: value,
-                              child: Text(value, style: const TextStyle(fontSize: 14, color: Colors.black87)),
-                            );
-                          }).toList(),
-                          onChanged: (String? newValue) {
-                            if (newValue != null) {
-                              setState(() {
-                                _bloodType = newValue;
-                              });
-                            }
-                          },
+                  ),
+                  // ── Save Button ───────────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _handleSave,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryRed,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
+                        elevation: 0,
                       ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                            )
+                          : const Text(
+                              'Simpan Perubahan',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                     ),
-                    const SizedBox(height: 40),
-                  ],
-                ),
-              ),
-            ),
-            // ── Save Button ───────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: ElevatedButton(
-                onPressed: () {
-                  // Save logic
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('Profil berhasil diperbarui!'),
-                      backgroundColor: AppColors.primaryRed,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  );
-                  Navigator.of(context).pop();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryRed,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
                   ),
-                  elevation: 0,
-                ),
-                child: const Text(
-                  'Simpan Perubahan',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                ],
               ),
-            ),
-          ],
-        ),
       ),
     );
   }
